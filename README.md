@@ -25,6 +25,8 @@ The raw data only contained the true class points. We generated the false class 
 
 Some features used some summary historical statistics about the user who were not available for all of them. We computed the global prior probabilities averaging all of the available information of other users instead of filling missing features using interpolation techniques.
 
+![Alt text](/../master/execution-plan-feature-engineering.tiff?raw=true "Example of execution plan in Spark for multiple table joins")
+
 ### Modelling
 
 We implemented two models:
@@ -48,6 +50,10 @@ We followed an investigate then develop methodology where we iterate through the
 5. Analyse and present results
  
 This workflow allowed us to first understand the data interactively and then develop the main logic into a more productive and robust environment like IntelliJ so that the Notebook stays clean and the library can be reused in different contexts.
+
+The end-to-end workflow was implemented and performed according to the following external references:
+[Manifesto for Agile Data Science] (http://www.datasciencemanifesto.org)
+[The complete 18 steps to start a new Agile Data Science project](https://datasciencevademecum.wordpress.com/2015/11/12/the-complete-18-steps-to-start-a-new-agile-data-science-project/)
 
 ## Limitations
 
