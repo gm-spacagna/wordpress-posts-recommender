@@ -2,6 +2,8 @@
 
 At the Advanced Data Analytics team at Barclays we solved the Kaggle competition https://www.kaggle.com/c/predict-wordpress-likes as proof-of-concept of how to use [Spark](https://github.com/apache/spark), [Scala](https://github.com/scala/scala) and the [Spark Notebook](https://github.com/andypetrella/spark-notebook) to solve a typical machine learning problem end-to-end.
 
+Workshop presentation slides available at https://speakerdeck.com/gmspacagna/wordpress-blog-posts-recommender-in-spark-scala-and-the-sparknotebook.
+
 ## Problem
 
 Recommending a sequence of blog posts that the users may like on WordPress based on their historical likes and blog/post/author characteristics.
