@@ -59,8 +59,11 @@ The end-to-end workflow was implemented and performed according to the following
 ## Technical Specifications
 
 We deployed Spark in local mode in a 8 cores 2.5 Ghz i7 Macbook Pro with 16GB of RAM.
+
 Spark version 1.5.0
+
 Notebook version 1.6.1
+
 Scala version 2.10.4
 
 ## Limitations
