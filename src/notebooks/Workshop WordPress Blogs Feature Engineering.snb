@@ -1,0 +1,927 @@
+{
+  "metadata" : {
+    "name" : "Workshop WordPress Blogs Feature Engineering",
+    "user_save_timestamp" : "1970-01-01T01:00:00.000Z",
+    "auto_save_timestamp" : "1970-01-01T01:00:00.000Z",
+    "language_info" : {
+      "name" : "scala",
+      "file_extension" : "scala",
+      "codemirror_mode" : "text/x-scala"
+    },
+    "trusted" : true,
+    "customLocalRepo" : null,
+    "customRepos" : null,
+    "customDeps" : null,
+    "customImports" : null,
+    "customArgs" : null,
+    "customSparkConf" : {
+      "spark.app.name" : "Notebook",
+      "spark.master" : "local[*]",
+      "spark.driver.memory" : "12G",
+      "spark.executor.memory" : "12G"
+    }
+  },
+  "cells" : [ {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "# Predict which blog posts someone will like."
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "https://www.kaggle.com/c/predict-wordpress-likes"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "Announced at the GigaOM Structure Conference, powered by Splunk, and using data from WordPress.com, this competition is about predicting which people will \"like\" which blog posts from across 90k active blogs on WordPress.com.  WordPress.com hosts about half of the 74 million WordPress sites in the world (over 16% of all domains on the web). The winning solutions may be used by WordPress.com in a recommendation engine, but winning solutions must be open-sourced, so they could be used by anyone to solve a similar problem using similar data in a similar domain."
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "## Imports"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : ":cp /Users/g09971710/src/wordpress-workshop/target/scala-2.10/wordpress-workshop-assembly-0.1.0-SNAPSHOT.jar",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "warning: there were 4 feature warning(s); re-run with -feature for details\nglobalScope.jars: Array[String] = [Ljava.lang.String;@453c785\nres4: List[String] = List(/Users/g09971710/src/wordpress-workshop/target/scala-2.10/wordpress-workshop-assembly-0.1.0-SNAPSHOT.jar, file:/Users/g09971710/spark-notebook-0.6.1-scala-2.10.4-spark-1.5.0-hadoop-2.6.0-cdh5.4.5-with-hive-with-parquet/, file:/Users/g09971710/spark-notebook-0.6.1-scala-2.10.4-spark-1.5.0-hadoop-2.6.0-cdh5.4.5-with-hive-with-parquet/lib/common.common-0.6.1-scala-2.10.4-spark-1.5.0-hadoop-2.6.0-cdh5.4.5-with-hive-with-parquet.jar)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "<div class=\"container-fluid\"><div><div class=\"col-md-12\"><div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anonb0c290603c4b66e9d0b6e39cbdbefede&quot;,&quot;dataInit&quot;:[{&quot;string value&quot;:&quot;/Users/g09971710/src/wordpress-workshop/target/scala-2.10/wordpress-workshop-assembly-0.1.0-SNAPSHOT.jar&quot;},{&quot;string value&quot;:&quot;file:/Users/g09971710/spark-notebook-0.6.1-scala-2.10.4-spark-1.5.0-hadoop-2.6.0-cdh5.4.5-with-hive-with-parquet/&quot;},{&quot;string value&quot;:&quot;file:/Users/g09971710/spark-notebook-0.6.1-scala-2.10.4-spark-1.5.0-hadoop-2.6.0-cdh5.4.5-with-hive-with-parquet/lib/common.common-0.6.1-scala-2.10.4-spark-1.5.0-hadoop-2.6.0-cdh5.4.5-with-hive-with-parquet.jar&quot;}],&quot;genId&quot;:&quot;74188162&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tableChart'], \n      function(playground, _magictableChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictableChart,\n    \"o\": {\"headers\":[\"string value\"],\"nrow\":3,\"shown\":3,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div></div></div></div>"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 1
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "import org.apache.spark.SparkContext\nimport org.apache.spark.broadcast.Broadcast\nimport org.apache.spark.ml.classification.LogisticRegression\nimport org.apache.spark.ml.param.ParamMap\nimport org.apache.spark.mllib.evaluation.BinaryClassificationMetrics\nimport org.apache.spark.mllib.linalg.{Vector, Vectors}\nimport org.apache.spark.rdd.RDD\nimport org.apache.spark.sql.{DataFrame, Row}\nimport scalaz.Scalaz._",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "import wordpressworkshop._",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "import wordpressworkshop._\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 3
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "## Loading data from Json into Case Class RDDs"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "@transient val sqlContext = new org.apache.spark.sql.SQLContext(sc)\nimport sqlContext.implicits._",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "sqlContext: org.apache.spark.sql.SQLContext = org.apache.spark.sql.SQLContext@4e1d0580\nimport sqlContext.implicits._\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 4
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val dataPath = \"file:///Users/g09971710/src/wordpress-workshop/data/\"",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "dataPath: String = file:///Users/g09971710/src/wordpress-workshop/data/\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "file:///Users/g09971710/src/wordpress-workshop/data/"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 5
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Stats Blog"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "kaggle-stats-blogs-20111123-20120423.json: 6 months of aggregate statistics about each blog.\nblog_id\nnum_posts\nnum_likes (note that a blog may have zero posts and more than zero likes in the 6 month period, since likes on posts prior to the 6 months are included)"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val statsBlogDF = sqlContext.read.json(dataPath + \"kaggle-stats-blogs-20111123-20120423.json\")\nval statsBlogRDD = statsBlogDF.map(_.toSeq.toList match {\n  case List(blogId: Long, numLikes: Long, numPosts: Long) => StatsBlog(blogId, numLikes, numPosts)\n})",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "statsBlogDF: org.apache.spark.sql.DataFrame = [blog_id: bigint, num_likes: bigint, num_posts: bigint]\nstatsBlogRDD: org.apache.spark.rdd.RDD[wordpressworkshop.StatsBlog] = MapPartitionsRDD[8] at map at <console>:69\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[8] at map at &lt;console&gt;:69"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 6
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Stats Users"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "kaggle-stats-users-20111123-20120423.json: 6 months of aggregate statistics about each user's like behavior.\nuser_id\nnum_likes (in previous 6 months)\nlike_blog_dist -- which blogs this user liked and how often"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val statsUserDF = sqlContext.read.json(dataPath + \"kaggle-stats-users-20111123-20120423.json\")\nval statsUserRDD: RDD[StatsUser] = statsUserDF.map(_.toSeq.toList match {\n  case List(likeBlogs: Seq[Row], numLikes: Long, userId: Long) =>\n    StatsUser(userId, numLikes, likeBlogs.map(row => row.getAs[String](0).toLong -> row.getAs[String](1).toLong).toMap)\n})",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "<console>:70: warning: non-variable type argument org.apache.spark.sql.Row in type pattern Seq[org.apache.spark.sql.Row] is unchecked since it is eliminated by erasure\n         case List(likeBlogs: Seq[Row], numLikes: Long, userId: Long) =>\n                              ^\nstatsUserDF: org.apache.spark.sql.DataFrame = [like_blog_dist: array<struct<blog_id:string,likes:string>>, num_likes: bigint, user_id: bigint]\nstatsUserRDD: org.apache.spark.rdd.RDD[wordpressworkshop.StatsUser] = MapPartitionsRDD[17] at map at <console>:69\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[17] at map at &lt;console&gt;:69"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 7
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Test Users"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "test.csv: List of users in the test data set. These are the users about whom you should make predictions."
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val testUsers = sc.textFile(dataPath + \"test.csv\").filter(!_.startsWith(\"id\")).map(_.toLong)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "testUsers: org.apache.spark.rdd.RDD[Long] = MapPartitionsRDD[21] at map at <console>:68\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[21] at map at &lt;console&gt;:68"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 8
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Train Posts"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "trainPostsThin.json: One JSON dictionary per line, where each line corresponds to one blog post from the training set (first 5 weeks). The fields are::\n\"blog\": blog ID\n\"post_id\": post IDs\n\"likes\": list of dictionaries, one for each like for this post, only containing likes from the training period (first 5 weeks). Later likes from the same post are not included. The fields are:\ndate\nuid (user id)\ntrainPosts.json: This is like trainPostsThin but with many more fields about the post, including its text, tags, and categories."
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val trainPostsDF = sqlContext.read.json(dataPath + \"final-data-non-thin/trainPosts.json\")\nval trainPostsRDD: RDD[(BlogPost, Set[Long])] = trainPostsDF.na.drop().map(_.toSeq.toList match {\n  case List(authorId: String, blogId: String, blogName: String, categories: Seq[String], content,\n  _, _, language: String, likes: Seq[Row], postId: String,\n  tags: Seq[String], title, url: String) =>\n    BlogPost(blogId.toLong, postId.toLong, authorId.toLong, blogName, Option(title.asInstanceOf[String]),\n      Option(content.asInstanceOf[String]),\n      language, categories.toSet,\n      tags.toSet) -> likes.map(_.getAs[String](1).toLong).toSet\n})",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "<console>:70: warning: non-variable type argument String in type pattern Seq[String] is unchecked since it is eliminated by erasure\n         case List(authorId: String, blogId: String, blogName: String, categories: Seq[String], content,\n                                                                                   ^\n<console>:71: warning: non-variable type argument org.apache.spark.sql.Row in type pattern Seq[org.apache.spark.sql.Row] is unchecked since it is eliminated by erasure\n         _, _, language: String, likes: Seq[Row], postId: String,\n                                        ^\n<console>:72: warning: non-variable type argument String in type pattern Seq[String] is unchecked since it is eliminated by erasure\n         tags: Seq[String], title, url: String) =>\n               ^\ntrainPostsDF: org.apache.spark.sql.DataFrame = [author: string, blog: string, blogname: string, categories: array<string>, content: string, date: string, date_gmt: string, language: string, likes: array<struct<dt:string,uid:string>>, post_id: string, tags: array<string>, title: string, url: string]\ntrainPostsRDD: org.apache.spark.rdd.RDD[(wordpressworkshop.BlogPost, Set[Long])] = MapPartitionsRDD[34] at map at <console>:69\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[34] at map at &lt;console&gt;:69"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 9
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Test Posts"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "testPosts.json: This is like trainPosts but without the \"likes\"."
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val testPostsDF = sqlContext.read.json(dataPath + \"final-data-non-thin/testPosts.json\")\n    val testPostsRDD: RDD[BlogPost] = testPostsDF.na.drop.map(_.toSeq.toList match {\n      case List(authorId: String, blogId: String, blogName: String, categories: Seq[String], content,\n      _, _, language: String, likes: Seq[Row], postId: String,\n      tags: Seq[String], title, url: String) =>\n        BlogPost(blogId.toLong, postId.toLong, authorId.toLong, blogName, Option(title.asInstanceOf[String]),\n          Option(content.asInstanceOf[String]),\n          language, categories.toSet,\n          tags.toSet)\n    })",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "<console>:70: warning: non-variable type argument String in type pattern Seq[String] is unchecked since it is eliminated by erasure\n             case List(authorId: String, blogId: String, blogName: String, categories: Seq[String], content,\n                                                                                       ^\n<console>:71: warning: non-variable type argument org.apache.spark.sql.Row in type pattern Seq[org.apache.spark.sql.Row] is unchecked since it is eliminated by erasure\n             _, _, language: String, likes: Seq[Row], postId: String,\n                                            ^\n<console>:72: warning: non-variable type argument String in type pattern Seq[String] is unchecked since it is eliminated by erasure\n             tags: Seq[String], title, url: String) =>\n                   ^\ntestPostsDF: org.apache.spark.sql.DataFrame = [author: string, blog: string, blogname: string, categories: array<string>, content: string, date: string, date_gmt: string, language: string, likes: array<string>, post_id: string, tags: array<string>, title: string, url: string]\ntestPostsRDD: org.apache.spark.rdd.RDD[wordpressworkshop.BlogPost] = MapPartitionsRDD[47] at map at <console>:69\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[47] at map at &lt;console&gt;:69"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 10
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Test Data"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "first column is userId second column is an array of post ids"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val evaluationTest: RDD[(Long, List[Long])] =\n      sc.textFile(dataPath + \"evaluation-final.csv\").map(_.split(\",\").toList match {\n        case List(userId, posts, _) => userId.toLong -> posts.split(\" \").toList.map(_.toLong)\n      })",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "evaluationTest: org.apache.spark.rdd.RDD[(Long, List[Long])] = MapPartitionsRDD[50] at map at <console>:69\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[50] at map at &lt;console&gt;:69"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 11
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "## EDA and Sanity Checks"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "statsUserRDD.filter(statsUser => statsUser.likeBlogs.values.sum != statsUser.numLikes).count()",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "res10: Long = 0\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "0"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 32
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "statsUserRDD.map(_.numLikes).histogram(25) match {\n  case (bins, counts) => bins.zip(counts)\n}",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "res19: Array[(Double, Long)] = Array((0.0,98060), (18060.76,37), (36121.52,12), (54182.28,1), (72243.04,0), (90303.8,0), (108364.56,0), (126425.32,0), (144486.08,0), (162546.84,0), (180607.6,0), (198668.36,0), (216729.12,0), (234789.88,0), (252850.64,0), (270911.4,1), (288972.16,0), (307032.92,0), (325093.68,0), (343154.44,0), (361215.2,0), (379275.96,0), (397336.72,0), (415397.48,0), (433458.24,1))\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "<div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anonba4978c40104770e880b6e5aa18c9f98&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:98060},{&quot;_1&quot;:18060.76,&quot;_2&quot;:37},{&quot;_1&quot;:36121.52,&quot;_2&quot;:12},{&quot;_1&quot;:54182.28,&quot;_2&quot;:1},{&quot;_1&quot;:72243.04,&quot;_2&quot;:0},{&quot;_1&quot;:90303.8,&quot;_2&quot;:0},{&quot;_1&quot;:108364.56,&quot;_2&quot;:0},{&quot;_1&quot;:126425.32,&quot;_2&quot;:0},{&quot;_1&quot;:144486.08,&quot;_2&quot;:0},{&quot;_1&quot;:162546.84,&quot;_2&quot;:0},{&quot;_1&quot;:180607.6,&quot;_2&quot;:0},{&quot;_1&quot;:198668.36,&quot;_2&quot;:0},{&quot;_1&quot;:216729.12,&quot;_2&quot;:0},{&quot;_1&quot;:234789.88,&quot;_2&quot;:0},{&quot;_1&quot;:252850.64,&quot;_2&quot;:0},{&quot;_1&quot;:270911.4,&quot;_2&quot;:1},{&quot;_1&quot;:288972.16,&quot;_2&quot;:0},{&quot;_1&quot;:307032.92,&quot;_2&quot;:0},{&quot;_1&quot;:325093.68,&quot;_2&quot;:0},{&quot;_1&quot;:343154.44,&quot;_2&quot;:0},{&quot;_1&quot;:361215.2,&quot;_2&quot;:0},{&quot;_1&quot;:379275.96,&quot;_2&quot;:0},{&quot;_1&quot;:397336.72,&quot;_2&quot;:0},{&quot;_1&quot;:415397.48,&quot;_2&quot;:0},{&quot;_1&quot;:433458.24,&quot;_2&quot;:1}],&quot;genId&quot;:&quot;1937342355&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tabs'], \n      function(playground, _magictabs) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictabs,\n    \"o\": {}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    <div>\n        <ul class=\"nav nav-tabs\" id=\"ul1937342355\"><li>\n              <a href=\"#tab1937342355-0\"><i class=\"fa fa-table\"/></a>\n            </li><li>\n              <a href=\"#tab1937342355-1\"><i class=\"fa fa-dot-circle-o\"/></a>\n            </li><li>\n              <a href=\"#tab1937342355-2\"><i class=\"fa fa-line-chart\"/></a>\n            </li><li>\n              <a href=\"#tab1937342355-3\"><i class=\"fa fa-bar-chart\"/></a>\n            </li></ul>\n\n        <div class=\"tab-content\" id=\"tab1937342355\"><div class=\"tab-pane\" id=\"tab1937342355-0\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anon7d919afc06552cadaf16fb22cb543c92&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:98060},{&quot;_1&quot;:18060.76,&quot;_2&quot;:37},{&quot;_1&quot;:36121.52,&quot;_2&quot;:12},{&quot;_1&quot;:54182.28,&quot;_2&quot;:1},{&quot;_1&quot;:72243.04,&quot;_2&quot;:0},{&quot;_1&quot;:90303.8,&quot;_2&quot;:0},{&quot;_1&quot;:108364.56,&quot;_2&quot;:0},{&quot;_1&quot;:126425.32,&quot;_2&quot;:0},{&quot;_1&quot;:144486.08,&quot;_2&quot;:0},{&quot;_1&quot;:162546.84,&quot;_2&quot;:0},{&quot;_1&quot;:180607.6,&quot;_2&quot;:0},{&quot;_1&quot;:198668.36,&quot;_2&quot;:0},{&quot;_1&quot;:216729.12,&quot;_2&quot;:0},{&quot;_1&quot;:234789.88,&quot;_2&quot;:0},{&quot;_1&quot;:252850.64,&quot;_2&quot;:0},{&quot;_1&quot;:270911.4,&quot;_2&quot;:1},{&quot;_1&quot;:288972.16,&quot;_2&quot;:0},{&quot;_1&quot;:307032.92,&quot;_2&quot;:0},{&quot;_1&quot;:325093.68,&quot;_2&quot;:0},{&quot;_1&quot;:343154.44,&quot;_2&quot;:0},{&quot;_1&quot;:361215.2,&quot;_2&quot;:0},{&quot;_1&quot;:379275.96,&quot;_2&quot;:0},{&quot;_1&quot;:397336.72,&quot;_2&quot;:0},{&quot;_1&quot;:415397.48,&quot;_2&quot;:0},{&quot;_1&quot;:433458.24,&quot;_2&quot;:1}],&quot;genId&quot;:&quot;321184248&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tableChart'], \n      function(playground, _magictableChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictableChart,\n    \"o\": {\"headers\":[\"_1\",\"_2\"],\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1937342355-1\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anond023816981187f9ae328d0615d7c79fd&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:98060},{&quot;_1&quot;:18060.76,&quot;_2&quot;:37},{&quot;_1&quot;:36121.52,&quot;_2&quot;:12},{&quot;_1&quot;:54182.28,&quot;_2&quot;:1},{&quot;_1&quot;:72243.04,&quot;_2&quot;:0},{&quot;_1&quot;:90303.8,&quot;_2&quot;:0},{&quot;_1&quot;:108364.56,&quot;_2&quot;:0},{&quot;_1&quot;:126425.32,&quot;_2&quot;:0},{&quot;_1&quot;:144486.08,&quot;_2&quot;:0},{&quot;_1&quot;:162546.84,&quot;_2&quot;:0},{&quot;_1&quot;:180607.6,&quot;_2&quot;:0},{&quot;_1&quot;:198668.36,&quot;_2&quot;:0},{&quot;_1&quot;:216729.12,&quot;_2&quot;:0},{&quot;_1&quot;:234789.88,&quot;_2&quot;:0},{&quot;_1&quot;:252850.64,&quot;_2&quot;:0},{&quot;_1&quot;:270911.4,&quot;_2&quot;:1},{&quot;_1&quot;:288972.16,&quot;_2&quot;:0},{&quot;_1&quot;:307032.92,&quot;_2&quot;:0},{&quot;_1&quot;:325093.68,&quot;_2&quot;:0},{&quot;_1&quot;:343154.44,&quot;_2&quot;:0},{&quot;_1&quot;:361215.2,&quot;_2&quot;:0},{&quot;_1&quot;:379275.96,&quot;_2&quot;:0},{&quot;_1&quot;:397336.72,&quot;_2&quot;:0},{&quot;_1&quot;:415397.48,&quot;_2&quot;:0},{&quot;_1&quot;:433458.24,&quot;_2&quot;:1}],&quot;genId&quot;:&quot;96694877&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/scatterChart'], \n      function(playground, _magicscatterChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magicscatterChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1937342355-2\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anone8abb857574eb973641683bc9f05a3b1&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:98060},{&quot;_1&quot;:18060.76,&quot;_2&quot;:37},{&quot;_1&quot;:36121.52,&quot;_2&quot;:12},{&quot;_1&quot;:54182.28,&quot;_2&quot;:1},{&quot;_1&quot;:72243.04,&quot;_2&quot;:0},{&quot;_1&quot;:90303.8,&quot;_2&quot;:0},{&quot;_1&quot;:108364.56,&quot;_2&quot;:0},{&quot;_1&quot;:126425.32,&quot;_2&quot;:0},{&quot;_1&quot;:144486.08,&quot;_2&quot;:0},{&quot;_1&quot;:162546.84,&quot;_2&quot;:0},{&quot;_1&quot;:180607.6,&quot;_2&quot;:0},{&quot;_1&quot;:198668.36,&quot;_2&quot;:0},{&quot;_1&quot;:216729.12,&quot;_2&quot;:0},{&quot;_1&quot;:234789.88,&quot;_2&quot;:0},{&quot;_1&quot;:252850.64,&quot;_2&quot;:0},{&quot;_1&quot;:270911.4,&quot;_2&quot;:1},{&quot;_1&quot;:288972.16,&quot;_2&quot;:0},{&quot;_1&quot;:307032.92,&quot;_2&quot;:0},{&quot;_1&quot;:325093.68,&quot;_2&quot;:0},{&quot;_1&quot;:343154.44,&quot;_2&quot;:0},{&quot;_1&quot;:361215.2,&quot;_2&quot;:0},{&quot;_1&quot;:379275.96,&quot;_2&quot;:0},{&quot;_1&quot;:397336.72,&quot;_2&quot;:0},{&quot;_1&quot;:415397.48,&quot;_2&quot;:0},{&quot;_1&quot;:433458.24,&quot;_2&quot;:1}],&quot;genId&quot;:&quot;1213479561&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/lineChart'], \n      function(playground, _magiclineChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magiclineChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1937342355-3\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anon10d4c8545773988cad189ec376c014ae&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:98060},{&quot;_1&quot;:18060.76,&quot;_2&quot;:37},{&quot;_1&quot;:36121.52,&quot;_2&quot;:12},{&quot;_1&quot;:54182.28,&quot;_2&quot;:1},{&quot;_1&quot;:72243.04,&quot;_2&quot;:0},{&quot;_1&quot;:90303.8,&quot;_2&quot;:0},{&quot;_1&quot;:108364.56,&quot;_2&quot;:0},{&quot;_1&quot;:126425.32,&quot;_2&quot;:0},{&quot;_1&quot;:144486.08,&quot;_2&quot;:0},{&quot;_1&quot;:162546.84,&quot;_2&quot;:0},{&quot;_1&quot;:180607.6,&quot;_2&quot;:0},{&quot;_1&quot;:198668.36,&quot;_2&quot;:0},{&quot;_1&quot;:216729.12,&quot;_2&quot;:0},{&quot;_1&quot;:234789.88,&quot;_2&quot;:0},{&quot;_1&quot;:252850.64,&quot;_2&quot;:0},{&quot;_1&quot;:270911.4,&quot;_2&quot;:1},{&quot;_1&quot;:288972.16,&quot;_2&quot;:0},{&quot;_1&quot;:307032.92,&quot;_2&quot;:0},{&quot;_1&quot;:325093.68,&quot;_2&quot;:0},{&quot;_1&quot;:343154.44,&quot;_2&quot;:0},{&quot;_1&quot;:361215.2,&quot;_2&quot;:0},{&quot;_1&quot;:379275.96,&quot;_2&quot;:0},{&quot;_1&quot;:397336.72,&quot;_2&quot;:0},{&quot;_1&quot;:415397.48,&quot;_2&quot;:0},{&quot;_1&quot;:433458.24,&quot;_2&quot;:1}],&quot;genId&quot;:&quot;1746327976&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/barChart'], \n      function(playground, _magicbarChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magicbarChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div></div>\n      </div></div>"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 45
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "val bins = (0 to 24).map(_.toDouble).toArray\n\nbins.zip(statsUserRDD.map(_.numLikes).histogram(bins))",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "bins: Array[Double] = Array(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0)\nres20: Array[(Double, Long)] = Array((0.0,11397), (1.0,15104), (2.0,8228), (3.0,5636), (4.0,4351), (5.0,3514), (6.0,2892), (7.0,2553), (8.0,2132), (9.0,1883), (10.0,1620), (11.0,1517), (12.0,1322), (13.0,1243), (14.0,1198), (15.0,1058), (16.0,1004), (17.0,904), (18.0,843), (19.0,772), (20.0,765), (21.0,704), (22.0,661), (23.0,1164))\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "<div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anone1bfe384ec8bd7e682bc3f710cd8bb53&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:11397},{&quot;_1&quot;:1.0,&quot;_2&quot;:15104},{&quot;_1&quot;:2.0,&quot;_2&quot;:8228},{&quot;_1&quot;:3.0,&quot;_2&quot;:5636},{&quot;_1&quot;:4.0,&quot;_2&quot;:4351},{&quot;_1&quot;:5.0,&quot;_2&quot;:3514},{&quot;_1&quot;:6.0,&quot;_2&quot;:2892},{&quot;_1&quot;:7.0,&quot;_2&quot;:2553},{&quot;_1&quot;:8.0,&quot;_2&quot;:2132},{&quot;_1&quot;:9.0,&quot;_2&quot;:1883},{&quot;_1&quot;:10.0,&quot;_2&quot;:1620},{&quot;_1&quot;:11.0,&quot;_2&quot;:1517},{&quot;_1&quot;:12.0,&quot;_2&quot;:1322},{&quot;_1&quot;:13.0,&quot;_2&quot;:1243},{&quot;_1&quot;:14.0,&quot;_2&quot;:1198},{&quot;_1&quot;:15.0,&quot;_2&quot;:1058},{&quot;_1&quot;:16.0,&quot;_2&quot;:1004},{&quot;_1&quot;:17.0,&quot;_2&quot;:904},{&quot;_1&quot;:18.0,&quot;_2&quot;:843},{&quot;_1&quot;:19.0,&quot;_2&quot;:772},{&quot;_1&quot;:20.0,&quot;_2&quot;:765},{&quot;_1&quot;:21.0,&quot;_2&quot;:704},{&quot;_1&quot;:22.0,&quot;_2&quot;:661},{&quot;_1&quot;:23.0,&quot;_2&quot;:1164}],&quot;genId&quot;:&quot;1684982995&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tabs'], \n      function(playground, _magictabs) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictabs,\n    \"o\": {}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    <div>\n        <ul class=\"nav nav-tabs\" id=\"ul1684982995\"><li>\n              <a href=\"#tab1684982995-0\"><i class=\"fa fa-table\"/></a>\n            </li><li>\n              <a href=\"#tab1684982995-1\"><i class=\"fa fa-dot-circle-o\"/></a>\n            </li><li>\n              <a href=\"#tab1684982995-2\"><i class=\"fa fa-line-chart\"/></a>\n            </li><li>\n              <a href=\"#tab1684982995-3\"><i class=\"fa fa-bar-chart\"/></a>\n            </li></ul>\n\n        <div class=\"tab-content\" id=\"tab1684982995\"><div class=\"tab-pane\" id=\"tab1684982995-0\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anon3bf592bb00f7f749ecedbf2bf6b3480b&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:11397},{&quot;_1&quot;:1.0,&quot;_2&quot;:15104},{&quot;_1&quot;:2.0,&quot;_2&quot;:8228},{&quot;_1&quot;:3.0,&quot;_2&quot;:5636},{&quot;_1&quot;:4.0,&quot;_2&quot;:4351},{&quot;_1&quot;:5.0,&quot;_2&quot;:3514},{&quot;_1&quot;:6.0,&quot;_2&quot;:2892},{&quot;_1&quot;:7.0,&quot;_2&quot;:2553},{&quot;_1&quot;:8.0,&quot;_2&quot;:2132},{&quot;_1&quot;:9.0,&quot;_2&quot;:1883},{&quot;_1&quot;:10.0,&quot;_2&quot;:1620},{&quot;_1&quot;:11.0,&quot;_2&quot;:1517},{&quot;_1&quot;:12.0,&quot;_2&quot;:1322},{&quot;_1&quot;:13.0,&quot;_2&quot;:1243},{&quot;_1&quot;:14.0,&quot;_2&quot;:1198},{&quot;_1&quot;:15.0,&quot;_2&quot;:1058},{&quot;_1&quot;:16.0,&quot;_2&quot;:1004},{&quot;_1&quot;:17.0,&quot;_2&quot;:904},{&quot;_1&quot;:18.0,&quot;_2&quot;:843},{&quot;_1&quot;:19.0,&quot;_2&quot;:772},{&quot;_1&quot;:20.0,&quot;_2&quot;:765},{&quot;_1&quot;:21.0,&quot;_2&quot;:704},{&quot;_1&quot;:22.0,&quot;_2&quot;:661},{&quot;_1&quot;:23.0,&quot;_2&quot;:1164}],&quot;genId&quot;:&quot;218269931&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tableChart'], \n      function(playground, _magictableChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictableChart,\n    \"o\": {\"headers\":[\"_1\",\"_2\"],\"nrow\":24,\"shown\":24,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1684982995-1\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anoneb191e215b27493038cd9669e797bcf9&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:11397},{&quot;_1&quot;:1.0,&quot;_2&quot;:15104},{&quot;_1&quot;:2.0,&quot;_2&quot;:8228},{&quot;_1&quot;:3.0,&quot;_2&quot;:5636},{&quot;_1&quot;:4.0,&quot;_2&quot;:4351},{&quot;_1&quot;:5.0,&quot;_2&quot;:3514},{&quot;_1&quot;:6.0,&quot;_2&quot;:2892},{&quot;_1&quot;:7.0,&quot;_2&quot;:2553},{&quot;_1&quot;:8.0,&quot;_2&quot;:2132},{&quot;_1&quot;:9.0,&quot;_2&quot;:1883},{&quot;_1&quot;:10.0,&quot;_2&quot;:1620},{&quot;_1&quot;:11.0,&quot;_2&quot;:1517},{&quot;_1&quot;:12.0,&quot;_2&quot;:1322},{&quot;_1&quot;:13.0,&quot;_2&quot;:1243},{&quot;_1&quot;:14.0,&quot;_2&quot;:1198},{&quot;_1&quot;:15.0,&quot;_2&quot;:1058},{&quot;_1&quot;:16.0,&quot;_2&quot;:1004},{&quot;_1&quot;:17.0,&quot;_2&quot;:904},{&quot;_1&quot;:18.0,&quot;_2&quot;:843},{&quot;_1&quot;:19.0,&quot;_2&quot;:772},{&quot;_1&quot;:20.0,&quot;_2&quot;:765},{&quot;_1&quot;:21.0,&quot;_2&quot;:704},{&quot;_1&quot;:22.0,&quot;_2&quot;:661},{&quot;_1&quot;:23.0,&quot;_2&quot;:1164}],&quot;genId&quot;:&quot;571139277&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/scatterChart'], \n      function(playground, _magicscatterChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magicscatterChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":24,\"shown\":24,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1684982995-2\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anonb58edc897f9b7b02d49f38488a157a09&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:11397},{&quot;_1&quot;:1.0,&quot;_2&quot;:15104},{&quot;_1&quot;:2.0,&quot;_2&quot;:8228},{&quot;_1&quot;:3.0,&quot;_2&quot;:5636},{&quot;_1&quot;:4.0,&quot;_2&quot;:4351},{&quot;_1&quot;:5.0,&quot;_2&quot;:3514},{&quot;_1&quot;:6.0,&quot;_2&quot;:2892},{&quot;_1&quot;:7.0,&quot;_2&quot;:2553},{&quot;_1&quot;:8.0,&quot;_2&quot;:2132},{&quot;_1&quot;:9.0,&quot;_2&quot;:1883},{&quot;_1&quot;:10.0,&quot;_2&quot;:1620},{&quot;_1&quot;:11.0,&quot;_2&quot;:1517},{&quot;_1&quot;:12.0,&quot;_2&quot;:1322},{&quot;_1&quot;:13.0,&quot;_2&quot;:1243},{&quot;_1&quot;:14.0,&quot;_2&quot;:1198},{&quot;_1&quot;:15.0,&quot;_2&quot;:1058},{&quot;_1&quot;:16.0,&quot;_2&quot;:1004},{&quot;_1&quot;:17.0,&quot;_2&quot;:904},{&quot;_1&quot;:18.0,&quot;_2&quot;:843},{&quot;_1&quot;:19.0,&quot;_2&quot;:772},{&quot;_1&quot;:20.0,&quot;_2&quot;:765},{&quot;_1&quot;:21.0,&quot;_2&quot;:704},{&quot;_1&quot;:22.0,&quot;_2&quot;:661},{&quot;_1&quot;:23.0,&quot;_2&quot;:1164}],&quot;genId&quot;:&quot;1745498516&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/lineChart'], \n      function(playground, _magiclineChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magiclineChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":24,\"shown\":24,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1684982995-3\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anon37bd0e9fd8ea2aca9f7bcb212b590ad3&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:0.0,&quot;_2&quot;:11397},{&quot;_1&quot;:1.0,&quot;_2&quot;:15104},{&quot;_1&quot;:2.0,&quot;_2&quot;:8228},{&quot;_1&quot;:3.0,&quot;_2&quot;:5636},{&quot;_1&quot;:4.0,&quot;_2&quot;:4351},{&quot;_1&quot;:5.0,&quot;_2&quot;:3514},{&quot;_1&quot;:6.0,&quot;_2&quot;:2892},{&quot;_1&quot;:7.0,&quot;_2&quot;:2553},{&quot;_1&quot;:8.0,&quot;_2&quot;:2132},{&quot;_1&quot;:9.0,&quot;_2&quot;:1883},{&quot;_1&quot;:10.0,&quot;_2&quot;:1620},{&quot;_1&quot;:11.0,&quot;_2&quot;:1517},{&quot;_1&quot;:12.0,&quot;_2&quot;:1322},{&quot;_1&quot;:13.0,&quot;_2&quot;:1243},{&quot;_1&quot;:14.0,&quot;_2&quot;:1198},{&quot;_1&quot;:15.0,&quot;_2&quot;:1058},{&quot;_1&quot;:16.0,&quot;_2&quot;:1004},{&quot;_1&quot;:17.0,&quot;_2&quot;:904},{&quot;_1&quot;:18.0,&quot;_2&quot;:843},{&quot;_1&quot;:19.0,&quot;_2&quot;:772},{&quot;_1&quot;:20.0,&quot;_2&quot;:765},{&quot;_1&quot;:21.0,&quot;_2&quot;:704},{&quot;_1&quot;:22.0,&quot;_2&quot;:661},{&quot;_1&quot;:23.0,&quot;_2&quot;:1164}],&quot;genId&quot;:&quot;1992280858&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/barChart'], \n      function(playground, _magicbarChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magicbarChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":24,\"shown\":24,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div></div>\n      </div></div>"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 46
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "val categories = trainPostsRDD.flatMap(_._1.categories).map(_ -> 1)\n.reduceByKey(_ + _).sortBy(_._2, ascending = false).take(25).toList",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "categories: List[(String, Int)] = List((Uncategorized,151912), (News,23988), (Computers and Internet,16485), (Photography,12730), (Politics,11759), (Music,10752), (Life,9094), (Travel,7544), (Art,6801), (Articles,6716), (中国禁闻,6491), (Fashion,6400), (Food,5679), (Family,5582), (General,5581), (Events,5220), (Video,5200), (Videos,5140), (The Nation,4946), (Writing,4737), (Poetry,4571), (photography,4304), (Humor,4143), (Business,4138), (Books,4108))\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "<div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anonc8965ef79eb22f21868b34c2dd86575e&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:&quot;Uncategorized&quot;,&quot;_2&quot;:151912},{&quot;_1&quot;:&quot;News&quot;,&quot;_2&quot;:23988},{&quot;_1&quot;:&quot;Computers and Internet&quot;,&quot;_2&quot;:16485},{&quot;_1&quot;:&quot;Photography&quot;,&quot;_2&quot;:12730},{&quot;_1&quot;:&quot;Politics&quot;,&quot;_2&quot;:11759},{&quot;_1&quot;:&quot;Music&quot;,&quot;_2&quot;:10752},{&quot;_1&quot;:&quot;Life&quot;,&quot;_2&quot;:9094},{&quot;_1&quot;:&quot;Travel&quot;,&quot;_2&quot;:7544},{&quot;_1&quot;:&quot;Art&quot;,&quot;_2&quot;:6801},{&quot;_1&quot;:&quot;Articles&quot;,&quot;_2&quot;:6716},{&quot;_1&quot;:&quot;中国禁闻&quot;,&quot;_2&quot;:6491},{&quot;_1&quot;:&quot;Fashion&quot;,&quot;_2&quot;:6400},{&quot;_1&quot;:&quot;Food&quot;,&quot;_2&quot;:5679},{&quot;_1&quot;:&quot;Family&quot;,&quot;_2&quot;:5582},{&quot;_1&quot;:&quot;General&quot;,&quot;_2&quot;:5581},{&quot;_1&quot;:&quot;Events&quot;,&quot;_2&quot;:5220},{&quot;_1&quot;:&quot;Video&quot;,&quot;_2&quot;:5200},{&quot;_1&quot;:&quot;Videos&quot;,&quot;_2&quot;:5140},{&quot;_1&quot;:&quot;The Nation&quot;,&quot;_2&quot;:4946},{&quot;_1&quot;:&quot;Writing&quot;,&quot;_2&quot;:4737},{&quot;_1&quot;:&quot;Poetry&quot;,&quot;_2&quot;:4571},{&quot;_1&quot;:&quot;photography&quot;,&quot;_2&quot;:4304},{&quot;_1&quot;:&quot;Humor&quot;,&quot;_2&quot;:4143},{&quot;_1&quot;:&quot;Business&quot;,&quot;_2&quot;:4138},{&quot;_1&quot;:&quot;Books&quot;,&quot;_2&quot;:4108}],&quot;genId&quot;:&quot;1907305462&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tabs'], \n      function(playground, _magictabs) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictabs,\n    \"o\": {}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    <div>\n        <ul class=\"nav nav-tabs\" id=\"ul1907305462\"><li>\n              <a href=\"#tab1907305462-0\"><i class=\"fa fa-table\"/></a>\n            </li><li>\n              <a href=\"#tab1907305462-1\"><i class=\"fa fa-bar-chart\"/></a>\n            </li><li>\n              <a href=\"#tab1907305462-2\"><i class=\"fa fa-pie-chart\"/></a>\n            </li></ul>\n\n        <div class=\"tab-content\" id=\"tab1907305462\"><div class=\"tab-pane\" id=\"tab1907305462-0\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anonda5487d06a9e9907131886d5e5f345ee&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:&quot;Uncategorized&quot;,&quot;_2&quot;:151912},{&quot;_1&quot;:&quot;News&quot;,&quot;_2&quot;:23988},{&quot;_1&quot;:&quot;Computers and Internet&quot;,&quot;_2&quot;:16485},{&quot;_1&quot;:&quot;Photography&quot;,&quot;_2&quot;:12730},{&quot;_1&quot;:&quot;Politics&quot;,&quot;_2&quot;:11759},{&quot;_1&quot;:&quot;Music&quot;,&quot;_2&quot;:10752},{&quot;_1&quot;:&quot;Life&quot;,&quot;_2&quot;:9094},{&quot;_1&quot;:&quot;Travel&quot;,&quot;_2&quot;:7544},{&quot;_1&quot;:&quot;Art&quot;,&quot;_2&quot;:6801},{&quot;_1&quot;:&quot;Articles&quot;,&quot;_2&quot;:6716},{&quot;_1&quot;:&quot;中国禁闻&quot;,&quot;_2&quot;:6491},{&quot;_1&quot;:&quot;Fashion&quot;,&quot;_2&quot;:6400},{&quot;_1&quot;:&quot;Food&quot;,&quot;_2&quot;:5679},{&quot;_1&quot;:&quot;Family&quot;,&quot;_2&quot;:5582},{&quot;_1&quot;:&quot;General&quot;,&quot;_2&quot;:5581},{&quot;_1&quot;:&quot;Events&quot;,&quot;_2&quot;:5220},{&quot;_1&quot;:&quot;Video&quot;,&quot;_2&quot;:5200},{&quot;_1&quot;:&quot;Videos&quot;,&quot;_2&quot;:5140},{&quot;_1&quot;:&quot;The Nation&quot;,&quot;_2&quot;:4946},{&quot;_1&quot;:&quot;Writing&quot;,&quot;_2&quot;:4737},{&quot;_1&quot;:&quot;Poetry&quot;,&quot;_2&quot;:4571},{&quot;_1&quot;:&quot;photography&quot;,&quot;_2&quot;:4304},{&quot;_1&quot;:&quot;Humor&quot;,&quot;_2&quot;:4143},{&quot;_1&quot;:&quot;Business&quot;,&quot;_2&quot;:4138},{&quot;_1&quot;:&quot;Books&quot;,&quot;_2&quot;:4108}],&quot;genId&quot;:&quot;751662771&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tableChart'], \n      function(playground, _magictableChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictableChart,\n    \"o\": {\"headers\":[\"_1\",\"_2\"],\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1907305462-1\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anonec210aea9d442cdd6493fd40340e49d1&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:&quot;Uncategorized&quot;,&quot;_2&quot;:151912},{&quot;_1&quot;:&quot;News&quot;,&quot;_2&quot;:23988},{&quot;_1&quot;:&quot;Computers and Internet&quot;,&quot;_2&quot;:16485},{&quot;_1&quot;:&quot;Photography&quot;,&quot;_2&quot;:12730},{&quot;_1&quot;:&quot;Politics&quot;,&quot;_2&quot;:11759},{&quot;_1&quot;:&quot;Music&quot;,&quot;_2&quot;:10752},{&quot;_1&quot;:&quot;Life&quot;,&quot;_2&quot;:9094},{&quot;_1&quot;:&quot;Travel&quot;,&quot;_2&quot;:7544},{&quot;_1&quot;:&quot;Art&quot;,&quot;_2&quot;:6801},{&quot;_1&quot;:&quot;Articles&quot;,&quot;_2&quot;:6716},{&quot;_1&quot;:&quot;中国禁闻&quot;,&quot;_2&quot;:6491},{&quot;_1&quot;:&quot;Fashion&quot;,&quot;_2&quot;:6400},{&quot;_1&quot;:&quot;Food&quot;,&quot;_2&quot;:5679},{&quot;_1&quot;:&quot;Family&quot;,&quot;_2&quot;:5582},{&quot;_1&quot;:&quot;General&quot;,&quot;_2&quot;:5581},{&quot;_1&quot;:&quot;Events&quot;,&quot;_2&quot;:5220},{&quot;_1&quot;:&quot;Video&quot;,&quot;_2&quot;:5200},{&quot;_1&quot;:&quot;Videos&quot;,&quot;_2&quot;:5140},{&quot;_1&quot;:&quot;The Nation&quot;,&quot;_2&quot;:4946},{&quot;_1&quot;:&quot;Writing&quot;,&quot;_2&quot;:4737},{&quot;_1&quot;:&quot;Poetry&quot;,&quot;_2&quot;:4571},{&quot;_1&quot;:&quot;photography&quot;,&quot;_2&quot;:4304},{&quot;_1&quot;:&quot;Humor&quot;,&quot;_2&quot;:4143},{&quot;_1&quot;:&quot;Business&quot;,&quot;_2&quot;:4138},{&quot;_1&quot;:&quot;Books&quot;,&quot;_2&quot;:4108}],&quot;genId&quot;:&quot;370751556&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/barChart'], \n      function(playground, _magicbarChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magicbarChart,\n    \"o\": {\"x\":\"_1\",\"y\":\"_2\",\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div><div class=\"tab-pane\" id=\"tab1907305462-2\">\n            <div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anon7c297830fa5fcb168fedd1e22a119d0e&quot;,&quot;dataInit&quot;:[{&quot;_1&quot;:&quot;Uncategorized&quot;,&quot;_2&quot;:151912},{&quot;_1&quot;:&quot;News&quot;,&quot;_2&quot;:23988},{&quot;_1&quot;:&quot;Computers and Internet&quot;,&quot;_2&quot;:16485},{&quot;_1&quot;:&quot;Photography&quot;,&quot;_2&quot;:12730},{&quot;_1&quot;:&quot;Politics&quot;,&quot;_2&quot;:11759},{&quot;_1&quot;:&quot;Music&quot;,&quot;_2&quot;:10752},{&quot;_1&quot;:&quot;Life&quot;,&quot;_2&quot;:9094},{&quot;_1&quot;:&quot;Travel&quot;,&quot;_2&quot;:7544},{&quot;_1&quot;:&quot;Art&quot;,&quot;_2&quot;:6801},{&quot;_1&quot;:&quot;Articles&quot;,&quot;_2&quot;:6716},{&quot;_1&quot;:&quot;中国禁闻&quot;,&quot;_2&quot;:6491},{&quot;_1&quot;:&quot;Fashion&quot;,&quot;_2&quot;:6400},{&quot;_1&quot;:&quot;Food&quot;,&quot;_2&quot;:5679},{&quot;_1&quot;:&quot;Family&quot;,&quot;_2&quot;:5582},{&quot;_1&quot;:&quot;General&quot;,&quot;_2&quot;:5581},{&quot;_1&quot;:&quot;Events&quot;,&quot;_2&quot;:5220},{&quot;_1&quot;:&quot;Video&quot;,&quot;_2&quot;:5200},{&quot;_1&quot;:&quot;Videos&quot;,&quot;_2&quot;:5140},{&quot;_1&quot;:&quot;The Nation&quot;,&quot;_2&quot;:4946},{&quot;_1&quot;:&quot;Writing&quot;,&quot;_2&quot;:4737},{&quot;_1&quot;:&quot;Poetry&quot;,&quot;_2&quot;:4571},{&quot;_1&quot;:&quot;photography&quot;,&quot;_2&quot;:4304},{&quot;_1&quot;:&quot;Humor&quot;,&quot;_2&quot;:4143},{&quot;_1&quot;:&quot;Business&quot;,&quot;_2&quot;:4138},{&quot;_1&quot;:&quot;Books&quot;,&quot;_2&quot;:4108}],&quot;genId&quot;:&quot;1018225926&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/pieChart'], \n      function(playground, _magicpieChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magicpieChart,\n    \"o\": {\"series\":\"_1\",\"p\":\"_2\",\"nrow\":25,\"shown\":25,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div>\n            </div></div>\n      </div></div>"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 47
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "Check if all of the users have an entry in User Stats"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "trainPostsRDD.flatMap(_._2).distinct()\n.map(_ -> ()).leftOuterJoin(statsUserRDD.keyBy(_.userId)).filter(_._2._2.isEmpty).count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "statsUserRDD.map(_.userId).distinct().count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "trainPostsRDD.flatMap(_._2).distinct().count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "Check if all of the blogs have an entry in Blog Stats"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "// missing\ntrainPostsRDD.map(_._1.blogId).distinct()\n.map(_ -> ()).leftOuterJoin(statsBlogRDD.keyBy(_.blogId)).filter(_._2._2.isEmpty).count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "// defined\ntrainPostsRDD.map(_._1.blogId).distinct()\n.map(_ -> ()).leftOuterJoin(statsBlogRDD.keyBy(_.blogId)).filter(_._2._2.isDefined).count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "trainPostsRDD.map(_._1.blogId).distinct().count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "statsBlogRDD.count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "trainPostsRDD.filter(_._1.language.isEmpty).count()",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "trainPostsRDD.keys.filter(post => post.blogId == 4 && post.postId == 1182450).collect().toList",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "trainPostsRDD.flatMap(_.productIterator).filter(_ == null).count()",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "res25: Long = 0\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "0"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 67
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "markdown",
+    "source" : "## Feature Engineering"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Populate missing stats"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val blogIdToPriorBlogLikelihoodBV: Broadcast[Map[Long, Double]] = \n  sc.broadcast(Features.blogIdToPriorBlogLikelihoodBV(statsUserRDD))",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "blogIdToPriorBlogLikelihoodBV: org.apache.spark.broadcast.Broadcast[Map[Long,Double]] = Broadcast(21)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(21)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 12
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val meanBlogLikesPerPost: Double = Features.meanBlogLikesPerPost(statsBlogRDD)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "meanBlogLikesPerPost: Double = 0.9536862461755149\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "0.9536862461755149"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 13
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Compute Likelihood Maps tailored for each user"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "type OtherLikelihoodMaps = (Map[String, Int], Map[String, Int], Map[String, Int], Map[Long, Int], Map[Int, Int])\nval userIdToOtherLikelihoodMaps: RDD[(Long, OtherLikelihoodMaps)] = Features.userIdToOtherLikelihoodMaps(trainPostsRDD)\nval userIdToOtherLikelihoodMapsBV: Broadcast[Map[Long, OtherLikelihoodMaps]] =\n  sc.broadcast(userIdToOtherLikelihoodMaps.collect().toMap)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "defined type alias OtherLikelihoodMaps\nuserIdToOtherLikelihoodMaps: org.apache.spark.rdd.RDD[(Long, (Map[String,Int], Map[String,Int], Map[String,Int], Map[Long,Int], Map[Int,Int]))] = MapPartitionsRDD[56] at mapValues at Features.scala:33\nuserIdToOtherLikelihoodMapsBV: org.apache.spark.broadcast.Broadcast[Map[Long,(Map[String,Int], Map[String,Int], Map[String,Int], Map[Long,Int], Map[Int,Int])]] = Broadcast(25)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(25)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 14
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val blogIdToAverageLikesPerPost: Map[Long, Double] = statsBlogRDD.map {\n  case StatsBlog(blogId, numLikes, numPosts) => blogId -> numLikes.toDouble / numPosts\n}.collect().toMap\nval blogIdToAverageLikesPerPostBV: Broadcast[Map[Long, Double]] = sc.broadcast(blogIdToAverageLikesPerPost)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "blogIdToAverageLikesPerPost: Map[Long,Double] = Map(20121531 -> 0.0, 24488504 -> 1.0, 19722450 -> 0.04, 18456431 -> 4.154639175257732, 13468477 -> 2.0625, 8480456 -> 1.0273972602739727, 20734530 -> 1.25, 2263894 -> 0.25, 16872327 -> 0.023809523809523808, 18676488 -> 1.8387096774193548, 9100051 -> 0.9090909090909091, 1195124 -> 0.21052631578947367, 23408974 -> 0.29411764705882354, 2575819 -> NaN, 534251 -> 0.21052631578947367, 3180513 -> 0.125, 23972029 -> 1.1818181818181819, 5577772 -> 1.0416666666666667, 21900541 -> 0.1875, 22635421 -> 0.01951219512195122, 9772666 -> 0.7272727272727273, 2151404 -> 0.375, 13738194 -> 0.0, 9181791 -> 0.16129032258064516, 5813842 -> 0.6363636363636364, 19716245 -> 0.7777777777777778, 1129499 -> 2.0, 19849551 -> 0.0, 7583736 -> 0.08823529411764706, 1758335..."
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(27)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 15
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val userIdToBlogLikelihood: Map[Long, Map[Long, Double]] =\n  statsUserRDD.map {\n    case StatsUser(userId, numLikes, likeBlogs) => userId -> likeBlogs.mapValues(_.toDouble / numLikes).map(identity)\n  }\n  .filter(_._2.size < 1000).collect().toMap\nval userIdToBlogLikelihoodBV: Broadcast[Map[Long, Map[Long, Double]]] = sc.broadcast(userIdToBlogLikelihood)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "userIdToBlogLikelihood: Map[Long,Map[Long,Double]] = Map(31057404 -> Map(32188221 -> 0.024390243902439025, 22498873 -> 0.024390243902439025, 31236434 -> 0.4634146341463415, 28372185 -> 0.024390243902439025, 29616608 -> 0.024390243902439025, 3584907 -> 0.024390243902439025, 2495015 -> 0.024390243902439025, 34650509 -> 0.024390243902439025, 19284932 -> 0.024390243902439025, 32892903 -> 0.07317073170731707, 12693971 -> 0.024390243902439025, 8915253 -> 0.024390243902439025, 19219150 -> 0.024390243902439025, 4389186 -> 0.024390243902439025, 9082644 -> 0.024390243902439025, 13762289 -> 0.024390243902439025, 15171901 -> 0.024390243902439025, 29941369 -> 0.024390243902439025, 20332914 -> 0.024390243902439025, 13377652 -> 0.024390243902439025, 33835812 -> 0.024390243902439025), 14370675 -> Map(1..."
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(29)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 16
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Features vector points of true class (likes)"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val featuresOfTrue = Features.features(trainPostsRDD, userIdToOtherLikelihoodMapsBV,\n    userIdToBlogLikelihoodBV, blogIdToPriorBlogLikelihoodBV, blogIdToAverageLikesPerPostBV, meanBlogLikesPerPost)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "featuresOfTrue: org.apache.spark.rdd.RDD[((Long, Long), wordpressworkshop.Features.Features)] = MapPartitionsRDD[62] at flatMap at Features.scala:65\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[62] at flatMap at Features.scala:65"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 20
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "markdown",
+    "source" : "### Features vector points of false class (non likes)"
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "We need to balance the number of false records according to the same distribution of true records"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val numLikeUsersDistributionArrayBV: Broadcast[Array[Int]] =\n      sc.broadcast(FalseLikes.numLikeUsersDistributionArray(trainPostsRDD))",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "numLikeUsersDistributionArrayBV: org.apache.spark.broadcast.Broadcast[Array[Int]] = Broadcast(31)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(31)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 21
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val userIds: Broadcast[Set[Long]] = sc.broadcast(trainPostsRDD.flatMap(_._2).distinct().collect().toSet)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "userIds: org.apache.spark.broadcast.Broadcast[Set[Long]] = Broadcast(34)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(34)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 22
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val blogPostsWithNonLikeUsers: RDD[(BlogPost, Set[Long])] =\n      FalseLikes.blogPostsWithNonLikeUsers(trainPostsRDD, numLikeUsersDistributionArrayBV, userIds)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "blogPostsWithNonLikeUsers: org.apache.spark.rdd.RDD[(wordpressworkshop.BlogPost, Set[Long])] = MapPartitionsRDD[70] at map at FalseLikes.scala:20\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[70] at map at FalseLikes.scala:20"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 23
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "val featuresOfFalse = Features.features(blogPostsWithNonLikeUsers, userIdToOtherLikelihoodMapsBV,\n      userIdToBlogLikelihoodBV, blogIdToPriorBlogLikelihoodBV, blogIdToAverageLikesPerPostBV, meanBlogLikesPerPost)",
+    "outputs" : [ ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "### Final Features vector in DataFrame "
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "val features = featuresOfTrue.values.map(features => 1.0 ->\n  Vectors.dense(features.productIterator.toArray.map(_.asInstanceOf[Double]))\n) ++ featuresOfFalse.values.map(features => 0.0 ->\n  Vectors.dense(features.productIterator.toArray.map(_.asInstanceOf[Double]))\n)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "import org.apache.spark.ml.classification.LogisticRegression\nimport org.apache.spark.ml.param.ParamMap\nimport org.apache.spark.mllib.linalg.{Vector, Vectors}\nimport org.apache.spark.sql.Row\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 40
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : true
+    },
+    "cell_type" : "code",
+    "source" : "// persist training features\nfeatures.map {\n  case (label, vector) => (label +: vector.toArray.toList).mkString(\"\\t\")\n}\n.saveAsTextFile(dataPath + \"trainFeatures-final2\")",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "<console>:111: error: not found: value featuresOfTrue\n       val features = featuresOfTrue.values.map(features => 1.0 -> \n                      ^\n"
+    } ]
+  }, {
+    "metadata" : { },
+    "cell_type" : "markdown",
+    "source" : "## Test Features"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val postTestIds: Set[Long] = evaluationTest.flatMap(_._2).distinct().collect().toSet\nval postTestIdsBV: Broadcast[Set[Long]] = sc.broadcast(postTestIds)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "postTestIds: Set[Long] = Set(999043, 444485, 729937, 1373110, 1492616, 871980, 88320, 485416, 273356, 661242, 1375968, 1889541, 855591, 1698892, 1520929, 758262, 1118049, 1828577, 803467, 1129499, 416231, 1780109, 458407, 1052681, 1051857, 1148490, 1071078, 1452335, 935857, 157184, 343382, 615962, 606021, 563055, 50400, 227957, 356804, 1591573, 600226, 86139, 878580, 1778124, 614049, 1575896, 1228403, 734891, 1292668, 1953723, 518106, 417634, 733177, 1768120, 245805, 671105, 403612, 525588, 1403303, 1526304, 1894822, 1277251, 373177, 600137, 295405, 1640754, 1685945, 1157035, 560470, 481507, 377007, 1587419, 607059, 1586700, 808788, 1341550, 335706, 1049960, 1273135, 204758, 1042321, 84486, 1605318, 826692, 502135, 1391561, 889879, 81767, 862982, 1424575, 62382, 895189, 136340, 279855, ..."
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(32)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 17
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val testUsers: RDD[Long] = sc.textFile(dataPath + \"test.csv\").filter(!_.startsWith(\"id\")).map(_.toLong)\nval smallTestUsers: Broadcast[Set[Long]] =\n  sc.broadcast(testUsers.sample(withReplacement = false, fraction = 0.1).take(100).toSet)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "testUsers: org.apache.spark.rdd.RDD[Long] = MapPartitionsRDD[67] at map at <console>:70\nsmallTestUsers: org.apache.spark.broadcast.Broadcast[Set[Long]] = Broadcast(35)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(35)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 18
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val testUserSetBV = sc.broadcast(testUsers.collect().toSet)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "testUserSetBV: org.apache.spark.broadcast.Broadcast[scala.collection.immutable.Set[Long]] = Broadcast(37)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(37)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 19
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val smallTestUsers: Broadcast[Set[Long]] =\n      sc.broadcast(testUsers.sample(withReplacement = false, fraction = 0.1).take(100).toSet)\n",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "smallTestUsers: org.apache.spark.broadcast.Broadcast[Set[Long]] = Broadcast(48)\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(48)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 36
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val tagToUserIds =\n  userIdToOtherLikelihoodMaps.filter(_._1 |> testUserSetBV.value).flatMap {\n    case (userId, maps) => maps._2.keys.map(_ -> userId)\n  }\n  .distinct().groupByKey().mapValues(_.toSet).collect().toMap\nval tagToUserIdsBV = sc.broadcast(tagToUserIds)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "tagToUserIds: scala.collection.immutable.Map[String,scala.collection.immutable.Set[Long]] = Map(21 secrets -> Set(29691674, 32265466, 33716830), high school sweetheart -> Set(14347391), reverse culture shock -> Set(25530759), Behavior Evaluation -> Set(34949812), power of slow -> Set(11494488, 23049627, 34599973, 8544647, 26041681, 18637137), Talent -> Set(2880713), Kinderfragen -> Set(31412791), جوجه رنگی -> Set(12977143), scraperboard -> Set(11646009), dairy free cookie recipes -> Set(17451299), Eltern -> Set(31874736, 22326793), Not Quite Tuscany -> Set(26651608), Solar Living Center -> Set(5961947), midnight sun -> Set(21096152), vie sur mars -> Set(24199549), noah levine -> Set(16602323), dredd -> Set(37069068, 32906881, 16816862), indígena -> Set(10101736), Jack Astor's -> Set(150..."
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "Broadcast(63)"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 45
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val testBlogPostsWithTestUsers: RDD[(BlogPost, Set[Long])] =\n  testPostsRDD.filter(_.postId |> postTestIdsBV.value)\n  .map(post => post -> post.tags.flatMap(tagToUserIdsBV.value.get).flatten)\n  .filter(_._2.nonEmpty)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "testBlogPostsWithTestUsers: org.apache.spark.rdd.RDD[(wordpressworkshop.BlogPost, Set[Long])] = MapPartitionsRDD[130] at filter at <console>:97\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[130] at filter at &lt;console&gt;:97"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 46
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "val testFeatures =\n  Features.features(testBlogPostsWithTestUsers, userIdToOtherLikelihoodMapsBV,\n    userIdToBlogLikelihoodBV, blogIdToPriorBlogLikelihoodBV, blogIdToAverageLikesPerPostBV, meanBlogLikesPerPost)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "testFeatures: org.apache.spark.rdd.RDD[((Long, Long), wordpressworkshop.Features.Features)] = MapPartitionsRDD[133] at flatMap at Features.scala:65\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "MapPartitionsRDD[133] at flatMap at Features.scala:65"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 47
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "testFeatures.map{\n  case ((userId, postId), features) => (List(userId, postId) ++ features.productIterator).mkString(\"\\t\")\n}\n.saveAsTextFile(dataPath + \"testFeatures-final-complete\")",
+    "outputs" : [ ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false
+    },
+    "cell_type" : "code",
+    "source" : "sc.textFile(dataPath + \"testFeatures-final\").take(10)",
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "res19: Array[String] = Array(36121536\t1636025\t0.0\t0.06666666666666667\t1.0\t0.0\t2.0\t1.892163698644685E-7\t0.9536862461755149, 14871103\t1636025\t0.0\t0.03125\t1.0\t0.0\t1.0\t0.0\t0.9536862461755149, 35231491\t1636025\t0.0\t0.015748031496062992\t1.0\t0.0\t0.8888888888888888\t1.892163698644685E-7\t0.9536862461755149, 11935433\t1636025\t0.004201680672268907\t0.013986013986013986\t1.0\t0.0\t1.6923076923076925\t0.0\t0.9536862461755149, 2456330\t1636025\t0.0\t0.008368200836820083\t1.0\t0.0\t1.8888888888888893\t1.892163698644685E-7\t0.9536862461755149, 32888810\t1636025\t0.007874015748031496\t0.005847953216374269\t1.0\t0.0\t2.1818181818181817\t1.892163698644685E-7\t0.9536862461755149, 34473328\t1636025\t0.0\t0.015625\t1.0\t0.0\t0.75\t0.0\t0.9536862461755149, 19595659\t1636025\t0.0\t0.018050541516245487\t1.0\t0.0\t1.875\t0.0\t0.9536862461755149, 130175..."
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : "<div class=\"container-fluid\"><div><div class=\"col-md-12\"><div>\n      <script data-this=\"{&quot;dataId&quot;:&quot;anon5091a9081f25269939836aa9f33c7a9c&quot;,&quot;dataInit&quot;:[{&quot;string value&quot;:&quot;36121536\\t1636025\\t0.0\\t0.06666666666666667\\t1.0\\t0.0\\t2.0\\t1.892163698644685E-7\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;14871103\\t1636025\\t0.0\\t0.03125\\t1.0\\t0.0\\t1.0\\t0.0\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;35231491\\t1636025\\t0.0\\t0.015748031496062992\\t1.0\\t0.0\\t0.8888888888888888\\t1.892163698644685E-7\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;11935433\\t1636025\\t0.004201680672268907\\t0.013986013986013986\\t1.0\\t0.0\\t1.6923076923076925\\t0.0\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;2456330\\t1636025\\t0.0\\t0.008368200836820083\\t1.0\\t0.0\\t1.8888888888888893\\t1.892163698644685E-7\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;32888810\\t1636025\\t0.007874015748031496\\t0.005847953216374269\\t1.0\\t0.0\\t2.1818181818181817\\t1.892163698644685E-7\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;34473328\\t1636025\\t0.0\\t0.015625\\t1.0\\t0.0\\t0.75\\t0.0\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;19595659\\t1636025\\t0.0\\t0.018050541516245487\\t1.0\\t0.0\\t1.875\\t0.0\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;13017560\\t1636025\\t0.0\\t0.008\\t1.0\\t0.0\\t1.5999999999999996\\t0.0\\t0.9536862461755149&quot;},{&quot;string value&quot;:&quot;34632519\\t1636025\\t0.0\\t0.00847457627118644\\t1.0\\t0.0\\t0.0\\t1.892163698644685E-7\\t0.9536862461755149&quot;}],&quot;genId&quot;:&quot;1417353368&quot;}\" type=\"text/x-scoped-javascript\">/*<![CDATA[*/req(['../javascripts/notebook/playground','../javascripts/notebook/magic/tableChart'], \n      function(playground, _magictableChart) {\n        // data ==> data-this (in observable.js's scopedEval) ==> this in JS => { dataId, dataInit, ... }\n        // this ==> scope (in observable.js's scopedEval) ==> this.parentElement ==> div.container below (toHtml)\n\n        playground.call(data,\n                        this\n                        ,\n                        {\n    \"f\": _magictableChart,\n    \"o\": {\"headers\":[\"string value\"],\"nrow\":10,\"shown\":10,\"width\":600,\"height\":400}\n  }\n  \n                        \n                        \n                      );\n      }\n    );/*]]>*/</script>\n    </div></div></div></div>"
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 44
+    } ]
+  } ],
+  "nbformat" : 4
+}
