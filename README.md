@@ -53,8 +53,8 @@ We followed an investigate then develop methodology where we iterate through the
 This workflow allowed us to first understand the data interactively and then develop the main logic into a more productive and robust environment like IntelliJ so that the Notebook stays clean and the library can be reused in different contexts.
 
 The end-to-end workflow was implemented and performed according to the following external references:
-[Manifesto for Agile Data Science] (http://www.datasciencemanifesto.org)
-[The complete 18 steps to start a new Agile Data Science project](https://datasciencevademecum.wordpress.com/2015/11/12/the-complete-18-steps-to-start-a-new-agile-data-science-project/)
+* [Manifesto for Agile Data Science] (http://www.datasciencemanifesto.org)
+* [The complete 18 steps to start a new Agile Data Science project](https://datasciencevademecum.wordpress.com/2015/11/12/the-complete-18-steps-to-start-a-new-agile-data-science-project/)
 
 ## Technical Specifications
 
