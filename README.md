@@ -56,22 +56,35 @@ The end-to-end workflow was implemented and performed according to the following
 [Manifesto for Agile Data Science] (http://www.datasciencemanifesto.org)
 [The complete 18 steps to start a new Agile Data Science project](https://datasciencevademecum.wordpress.com/2015/11/12/the-complete-18-steps-to-start-a-new-agile-data-science-project/)
 
+## Technical Specifications
+
+We deployed Spark in local mode in a 8 cores 2.5 Ghz i7 Macbook Pro with 16GB of RAM.
+Spark version 1.5.0
+Notebook version 1.6.1
+Scala version 2.10.4
+
 ## Limitations
 
 We run our experiments in Spark local mode since that the size of data was small enough but the implementation is so that it can scale for any size and any cluster.
+
+We did not leverage the DataFrame optimizations for the engineering part but we prefered the flexibility and functionalities of the classic RDDs.
 
 Features independency was not verified, for example we expect tagsLikelihood and categoriesLikelihood features to be highly correlated. PCA or similar techniques could have been adopted to make the solution more reliable.
 
 The whole analysis/modelling was performed statically without considering timestamps or sequence of events.
 
-The goal was not proving the absolute correctness of the solution but more showing how you can easily implement and end-to-end scalable and production-quality solution for typical data science problem by leveraging Spark, Scala and the SparkNotebook.
+In order to reduce the search space in the evaluation we pre-filtered only the blog posts who were liked at least once in the test dataset. That is obviously cheating but we needed to reduce the search space for our experiments because we did not use a proper Big Data cluster.
+
+Same for evaluated users, we only selected 100 random ones.
+
+Bear in mind that ehe goal was not proving the correctness of the solution but more showing how you can easily implement and end-to-end scalable and production-quality solution for typical data science problem by leveraging Spark, Scala and the SparkNotebook.
 
 ## Conclusions
 
 Key findings are:
 
-* DataFrame is great for IO and schema inference from the sources
-* DataFrame is good when you have flatten schemas, operations start to be more complicated with nested and array fields and * does not support nested look-up maps which should be represented as separate tables and then joined
+* DataFrame is great for I/O and schema inference from the sources.
+* DataFrame is good when you have flatten schemas, operations start to be more complicated with nested and array fields.
 * RDD gives you the flexibility of doing your ETL using the richness of the scala framework, in the other hand you must be careful on optimizing your execution plans.
 * Functional Programming allowed us to express complex logic and execution plans with a simple and clear code free of side effects.
 * ETL and feature engineering is the most time-consuming part, once you obtained the data you want in vector format then you can convert back to DataFrame and use the ML APIs.
