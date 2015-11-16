@@ -1,4 +1,4 @@
-# Wordpress Blog Post Recommender in Spark and Scala
+# WordPress Blog Post Recommender in Spark and Scala
 
 At the Advanced Data Analytics team at Barclays we solved the Kaggle competition https://www.kaggle.com/c/predict-wordpress-likes as proof-of-concept of how to use [Spark](https://github.com/apache/spark), [Scala](https://github.com/scala/scala) and the [Spark Notebook](https://github.com/andypetrella/spark-notebook) to solve a typical machine learning problem end-to-end.
 
