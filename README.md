@@ -25,7 +25,7 @@ The raw data only contained the true class points. We generated the false class 
 
 Some features used some summary historical statistics about the user who were not available for all of them. We computed the global prior probabilities averaging all of the available information of other users instead of filling missing features using interpolation techniques.
 
-![Alt text](/../master/execution-plan-feature-engineering.tiff?raw=true "Example of execution plan in Spark for multiple table joins")
+![Alt text](/../master/execution-plan-feature-engineering.png?raw=true "Example of execution plan in Spark for multiple table joins")
 
 ### Modelling
 
